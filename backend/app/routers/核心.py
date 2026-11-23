@@ -2,7 +2,7 @@ import json
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from app.db import 夹具目录, 连接
+from app.db import 夹具目录, 连接, 读事务
 from app.services import 装载, 贯验, 目录, 演练
 from app.modules import 允许迟到策略
 
@@ -183,11 +183,17 @@ from app.modules import 撤回摘要 as 摘
 
 @路由.get("/核证/撤回摘要")
 def 取撤回摘要(窗键: str | None = None):
-    conn = 连接()
-    try:
-        return 摘.查摘要(conn, 窗键)
-    finally:
-        conn.close()
+    """撤回摘要核证（只读）：摘要链 ↔ 撤回单 ↔ 窗行三面对账。
+
+    逐跳重算摘要哈希、校验链序号连续与单根形态、末跳=窗表现行；
+    全过即钉死。二次迟到修正只采信摘要链末跳，不采信裸窗行另算。
+    """
+    with 读事务() as conn:
+        if 窗键 and not conn.execute(
+            "SELECT 1 FROM 热度窗 WHERE 窗键=?", (窗键,)
+        ).fetchone():
+            raise HTTPException(404, f"窗不存在:{窗键}")
+        return 摘.核证(conn, 窗键)
 
 def _alias_payload(payload: dict) -> dict:
     out = dict(payload or {})

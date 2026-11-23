@@ -8,6 +8,8 @@ def 跑贯验() -> dict:
 
     - 已关闭窗的点赞/送礼/笔数 = 落入该窗的事件合计；
     - 撤回链须逐跳衔接：旧值=上一跳新值、版本逐跳 +1、末跳新值=窗表现行合计；
+    - 撤回摘要链须与撤回单逐跳对上（事件/合计/哈希），末跳=窗表现行，
+      撤回在而摘要空、链断、根数≠1 都算撕裂；
     - 旁路事件不得挂窗键；
     - 允许迟到界内被修正的窗，证据须 valid。
 
@@ -18,7 +20,11 @@ def 跑贯验() -> dict:
         事件数 = conn.execute("SELECT COUNT(*) FROM 互动事件").fetchone()[0]
         已关闭 = conn.execute("SELECT * FROM 热度窗 WHERE 状态='已关闭'").fetchall()
         撤回数 = conn.execute("SELECT COUNT(*) FROM 撤回单").fetchone()[0]
+        摘要数 = conn.execute("SELECT COUNT(*) FROM 撤回摘要").fetchone()[0]
         旁路数 = conn.execute("SELECT COUNT(*) FROM 旁路匣").fetchone()[0]
+
+        if 摘要数 != 撤回数:
+            问题.append(f"撤回单{撤回数}跳≠撤回摘要{摘要数}条：撤回在而摘要空或摘要双写")
 
         for 窗 in 已关闭:
             证据 = 允许迟到策略._组装证据(conn, 窗)
@@ -48,6 +54,7 @@ def 跑贯验() -> dict:
         "事件数": 事件数,
         "已关闭窗数": 已关窗数,
         "撤回数": 撤回数,
+        "摘要数": 摘要数,
         "旁路数": 旁路数,
         "说明": 说明,
         "问题": 问题,

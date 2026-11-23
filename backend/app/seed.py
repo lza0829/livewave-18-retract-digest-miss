@@ -2,6 +2,11 @@ from datetime import datetime, timezone
 
 from app.db import 连接, 写事务
 
+
+def 此刻() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
 建表 = """
 CREATE TABLE IF NOT EXISTS 撤回摘要 (
   编号 INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -11,6 +16,7 @@ CREATE TABLE IF NOT EXISTS 撤回摘要 (
   新合计 TEXT NOT NULL DEFAULT '',
   摘要哈希 TEXT NOT NULL DEFAULT '',
   链序号 INTEGER NOT NULL DEFAULT 0,
+  撤回单号 INTEGER NOT NULL DEFAULT 0,
   批号 TEXT NOT NULL DEFAULT '',
   时刻 TEXT NOT NULL DEFAULT ''
 );
@@ -97,7 +103,32 @@ CREATE TABLE IF NOT EXISTS 窗贯验 (
 );
 CREATE INDEX IF NOT EXISTS 互动事件_窗键 ON 互动事件(窗键, 命运);
 CREATE INDEX IF NOT EXISTS 撤回单_窗键 ON 撤回单(窗键, 编号);
-老库升级：旧撤回单没有版本/笔数（新列为 0），按窗键与编号顺序确定性回填。
+CREATE UNIQUE INDEX IF NOT EXISTS 撤回摘要_窗链 ON 撤回摘要(窗键, 链序号);
+"""
+
+# 老库补列：建表已含的新列对老库 ALTER 补上；新库自动跳过。
+补列 = {
+    "撤回单": {
+        "旧笔数": "INTEGER NOT NULL DEFAULT 0",
+        "新笔数": "INTEGER NOT NULL DEFAULT 0",
+        "旧版本": "INTEGER NOT NULL DEFAULT 0",
+        "新版本": "INTEGER NOT NULL DEFAULT 0",
+    },
+    "撤回摘要": {
+        "撤回单号": "INTEGER NOT NULL DEFAULT 0",
+    },
+}
+
+
+def _补列(conn, 表: str, 列: dict) -> None:
+    已有 = {r[1] for r in conn.execute(f"PRAGMA table_info({表})").fetchall()}
+    for 名, 型 in 列.items():
+        if 名 not in 已有:
+            conn.execute(f"ALTER TABLE {表} ADD COLUMN {名} {型}")
+
+
+def _迁移旧撤回单(conn) -> None:
+    """老库升级：旧撤回单没有版本/笔数（新列为 0），按窗键与编号顺序确定性回填。
 
     回填口径：关闭发射版 = 1，其后每次修正逐跳 +1；末跳新笔数取窗表现行笔数，
     向前倒推。只填空缺（新列仍为 0 的行），已写入的行一律不动。
@@ -146,13 +177,13 @@ def 初始化库() -> None:
                 "水位推进策略": "事件时最大值",
                 "关窗条件": "水位>=窗止即关闭发射",
                 "旁路条件": "水位>=窗止+允许迟到",
-                "迟到修正口径": "甲-原地改窗合计并写撤回单（窗表只留当前合计，历史旧值经撤回单链回溯）",
+                "迟到修正口径": "甲-原地改窗合计并写撤回单；撤回摘要链续写接管二次修正（缺摘要或链断整票失败）",
                 "骨架": "互动事件入流→事件时间水位线推进→热度窗关闭发射→迟到修正撤回→窗输出与撤回互证",
             }.items():
                 conn.execute("INSERT INTO 站规(键, 值) VALUES (?, ?)", (k, v))
         conn.execute(
             "INSERT OR IGNORE INTO 站规(键, 值) VALUES (?, ?)",
-            ("迟到修正口径", "甲-原地改窗合计并写撤回单（窗表只留当前合计，历史旧值经撤回单链回溯）"),
+            ("迟到修正口径", "甲-原地改窗合计并写撤回单；撤回摘要链续写接管二次修正（缺摘要或链断整票失败）"),
         )
         if conn.execute("SELECT COUNT(*) AS c FROM 直播间").fetchone()["c"] == 0:
             conn.execute(

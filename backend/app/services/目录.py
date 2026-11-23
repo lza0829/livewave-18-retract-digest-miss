@@ -16,6 +16,7 @@ def 总览() -> dict:
             "已入窗": c("SELECT COUNT(*) FROM 互动事件 WHERE 命运='已入窗'"),
             "已旁路": c("SELECT COUNT(*) FROM 互动事件 WHERE 命运='已旁路'"),
             "撤回单数": c("SELECT COUNT(*) FROM 撤回单"),
+            "撤回摘要": c("SELECT COUNT(*) FROM 撤回摘要"),
             "开启窗": c("SELECT COUNT(*) FROM 热度窗 WHERE 状态='开启'"),
             "已关闭窗": c("SELECT COUNT(*) FROM 热度窗 WHERE 状态='已关闭'"),
             "撤回单": c("SELECT COUNT(*) FROM 撤回单"),
